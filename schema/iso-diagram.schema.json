@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "iso-diagram source file (*.iso.yaml)",
+  "type": "object",
+  "required": ["layers"],
+  "additionalProperties": false,
+  "properties": {
+    "iso": { "type": "integer", "const": 1, "description": "format version" },
+    "title": { "type": "string" },
+    "subtitle": { "type": "string" },
+    "theme": { "enum": ["light", "dark"], "default": "light" },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Declared bottom -> top.",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+          "label": { "type": ["string", "number"] },
+          "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+          "level": { "type": ["string", "integer"], "description": "Layers sharing a level are separate plates side by side at the same height. Levels are stacked in order of first appearance. Default: every layer is its own level." },
+          "groups": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "label": { "type": ["string", "number"] },
+                "kind": { "type": "string", "description": "zone | cluster | namespace | rack | vlan | group" },
+                "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+                "in": { "type": "string", "description": "parent group id (same layer)" },
+                "cols": { "type": "integer", "minimum": 1 }
+              }
+            }
+          },
+          "nodes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["kind"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "type": "string" },
+                "label": { "type": ["string", "number"] },
+                "note": { "type": "string", "description": "shown in the tooltip" },
+                "in": { "type": "string", "description": "containing group id (same layer)" },
+                "on": { "type": "string", "description": "node this one runs on (usually in a lower layer); draws a riser" },
+                "mount": { "type": "string", "description": "storage node attached to this one; draws a riser" },
+                "icon": { "type": "string", "description": "override icon, '<pack>:<id>' e.g. aws:aws-api-gateway" },
+                "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to"],
+        "additionalProperties": false,
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "label": { "type": ["string", "number"] },
+          "class": { "type": "string", "description": "internal | external | data | control | storage | management" },
+          "bidirectional": { "type": "boolean", "default": false },
+          "dashed": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

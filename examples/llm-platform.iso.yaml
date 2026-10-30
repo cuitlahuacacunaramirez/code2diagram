@@ -1,0 +1,86 @@
+iso: 1
+title: LLM Platform on On-Prem Kubernetes
+subtitle: Hardware to UI, one layer per concern
+theme: light
+
+# Layers are declared bottom -> top.
+layers:
+  - id: hardware
+    label: Hardware
+    groups:
+      rackA: { label: Rack A, kind: rack }
+    nodes:
+      gpu1: { kind: server, label: GPU node 1, in: rackA, note: 8x H100 }
+      gpu2: { kind: server, label: GPU node 2, in: rackA, note: 8x H100 }
+      cpu1: { kind: server, label: CPU node,   in: rackA }
+      nas:  { kind: nas,    label: NAS,        note: 200 TB NFS }
+
+  - id: network
+    label: Network
+    groups:
+      dmz: { label: DMZ, kind: zone }
+    nodes:
+      core: { kind: switch,        label: Core switch }
+      lb:   { kind: load-balancer, label: F5 LB, in: dmz }
+      vpn:  { kind: vpn,           label: VPN,   in: dmz }
+
+  - id: security
+    label: Security
+    nodes:
+      fw:    { kind: firewall, label: Perimeter FW }
+      vault: { kind: vault,    label: Secrets vault }
+
+  - id: k8s
+    label: Kubernetes
+    groups:
+      cluster: { label: prod-cluster, kind: cluster }
+    nodes:
+      cp:      { kind: k8s-control-plane, label: Control plane, in: cluster, on: cpu1 }
+      node1:   { kind: k8s-node,          label: Worker 1,      in: cluster, on: gpu1 }
+      node2:   { kind: k8s-node,          label: Worker 2,      in: cluster, on: gpu2 }
+      ingress: { kind: ingress,           label: Ingress,       in: cluster }
+      pvc:     { kind: pvc,               label: models 500Gi,  in: cluster, mount: nas }
+
+  - id: workloads
+    label: Workloads
+    groups:
+      llmns: { label: ns / llm,  kind: namespace }
+      appns: { label: ns / apps, kind: namespace }
+    nodes:
+      vllm:  { kind: llm,          label: vLLM Llama 3 70B, in: llmns, on: node1, mount: pvc, note: OpenAI-compatible inference }
+      embed: { kind: llm,          label: Embeddings,       in: llmns, on: node2 }
+      chat:  { kind: microservice, label: chat-api,         in: appns, on: node2 }
+      rag:   { kind: microservice, label: rag-service,      in: appns, on: node2 }
+      queue: { kind: queue,        label: Job queue,        in: appns }
+
+  - id: data
+    label: Data
+    nodes:
+      pg:    { kind: database,    label: PostgreSQL }
+      redis: { kind: cache,       label: Redis }
+      docs:  { kind: datasource,  label: Document store }
+
+  - id: experience
+    label: Experience
+    nodes:
+      users: { kind: user, label: Employees }
+      ui:    { kind: ui,   label: Chat UI }
+
+links:
+  - { from: users, to: ui,      label: HTTPS,  class: external }
+  - { from: ui,    to: lb,      label: 443,    class: external }
+  - { from: lb,    to: fw,      class: external }
+  - { from: fw,    to: ingress, class: external }
+  - { from: ingress, to: chat,  label: HTTP,   class: internal }
+  - { from: chat,  to: vllm,    label: gRPC,   class: internal }
+  - { from: chat,  to: rag,     class: internal }
+  - { from: rag,   to: embed,   class: internal }
+  - { from: rag,   to: docs,    label: ingest, class: data }
+  - { from: chat,  to: pg,      label: SQL,    class: data }
+  - { from: chat,  to: redis,   class: data }
+  - { from: chat,  to: queue,   class: internal }
+  - { from: cp,    to: node1,   class: control }
+  - { from: cp,    to: node2,   class: control }
+  - { from: vault, to: chat,    label: secrets, class: management }
+  - { from: core,  to: gpu1,    class: management }
+  - { from: core,  to: gpu2,    class: management }

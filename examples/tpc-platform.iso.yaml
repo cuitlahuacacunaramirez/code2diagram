@@ -1,0 +1,302 @@
+iso: 1
+title: TPC AI Platform on OpenShift
+subtitle: Draft 1 - network design is a placeholder (see notes)
+
+# Levels (bottom -> top). Layers that share a `level:` are separate plates side by side.
+#   base      hardware + network
+#   state     storage (PowerScale access zones), data layer, identity
+#   platform  OpenShift
+#   secops    security + observability
+#   workloads one plate (namespace) per workload
+#   edge      API + user experience
+layers:
+  # ------------------------------------------------------------------ level 1: base
+  - id: hardware
+    label: Hardware
+    level: base
+    color: "#dbeafe"
+    groups:
+      rack-cp:   { label: Control plane (R770), kind: rack, cols: 3 }
+      rack-cpu:  { label: CPU workers (R770), kind: rack, cols: 2 }
+      rack-gpu:  { label: GPU workers (XE7745), kind: rack, cols: 2 }
+    nodes:
+      cp1:   { kind: server, label: Control plane 1, in: rack-cp, note: "Dell PowerEdge R770" }
+      cp2:   { kind: server, label: Control plane 2, in: rack-cp, note: "Dell PowerEdge R770" }
+      cp3:   { kind: server, label: Control plane 3, in: rack-cp, note: "Dell PowerEdge R770" }
+      cpu1:  { kind: server, label: CPU worker 1, in: rack-cpu, note: "Dell PowerEdge R770" }
+      cpu2:  { kind: server, label: CPU worker 2, in: rack-cpu, note: "Dell PowerEdge R770" }
+      gpu1:  { kind: gpu, label: GPU worker 1, in: rack-gpu, note: "Dell XE7745 with NVIDIA H100 GPUs" }
+      gpu2:  { kind: gpu, label: GPU worker 2, in: rack-gpu, note: "Dell XE7745 with NVIDIA H100 GPUs" }
+      bastion:    { kind: server, label: Bastion server, note: "Generic server. Control plane and admin access into the network." }
+      powerscale: { kind: nas, label: Dell PowerScale, note: "NFS storage; one access zone per namespace (see Storage plate)" }
+
+  - id: network
+    label: Network (placeholder)
+    level: base
+    color: "#ccfbf1"
+    groups:
+      net-core: { label: Core, kind: group }
+      net-segments: { label: Segments, kind: vlan }
+    nodes:
+      internet:   { kind: internet, label: Corporate / Internet, in: net-core }
+      core-sw:    { kind: switch, label: Core switch, in: net-core, note: "Placeholder - final design pending" }
+      ingress-vip: { kind: load-balancer, label: Ingress VIP, in: net-core, note: "VIP in front of the CPU workers' ingress" }
+      mgmt-sw:    { kind: switch, label: Management / OOB switch, in: net-segments, note: "iDRAC, bastion, admin traffic" }
+      data-sw:    { kind: switch, label: Cluster data switch, in: net-segments, note: "Node-to-node and pod traffic" }
+      storage-sw: { kind: switch, label: Storage switch, in: net-segments, note: "NFS traffic to PowerScale" }
+      gpu-fabric: { kind: switch, label: GPU fabric, in: net-segments, note: "Placeholder for RoCE / InfiniBand between GPU nodes" }
+
+  # ------------------------------------------------------------------ level 2: state
+  - id: storage
+    label: Storage - PowerScale access zones
+    level: state
+    color: "#fef3c7"
+    groups:
+      zones: { label: One access zone per namespace, kind: zone, cols: 3 }
+    nodes:
+      az-multiagent: { kind: nas, label: AZ multi-agent, in: zones, on: powerscale, note: "Currently all zones share the same settings; kept separate for the future multi-tier design" }
+      az-models:     { kind: nas, label: AZ models, in: zones, on: powerscale, note: "Currently all zones share the same settings" }
+      az-jupyter:    { kind: nas, label: AZ jupyter, in: zones, on: powerscale, note: "Currently all zones share the same settings" }
+      az-anaconda:   { kind: nas, label: AZ anaconda, in: zones, on: powerscale, note: "Currently all zones share the same settings" }
+      az-admin:      { kind: nas, label: AZ admin, in: zones, on: powerscale, note: "Currently all zones share the same settings" }
+
+  - id: data
+    label: Data layer
+    level: state
+    color: "#dcfce7"
+    nodes:
+      datalake: { kind: object-store, label: Data lake }
+      iceberg:  { kind: datasource, label: Apache Iceberg, note: "Open table format on the data lake" }
+      orch:     { kind: microservice, label: Dell Data Orchestration, color: "#0e7490", note: "Moves and prepares data between Iceberg and the query engines" }
+      trino:    { kind: microservice, label: Data analytics engines (Starburst / Trino), color: "#0369a1" }
+      search:   { kind: database, label: Dell Data Search Engine, note: "Elasticsearch + NVIDIA cuVS" }
+
+  - id: identity
+    label: Identity provider
+    level: state
+    color: "#ede9fe"
+    groups:
+      ad-ns: { label: Namespace Active Directories, kind: group, cols: 3 }
+    nodes:
+      keycloak:    { kind: vault, label: Keycloak, note: "Identity provider (OIDC) for the platform" }
+      ad-tpc:      { kind: server, label: TPC Active Directory, icon: "azure:azure-active-directory", note: "Default AD for the control plane; root of the federation" }
+      ad-multiagent: { kind: server, label: AD multi-agent, in: ad-ns, icon: "azure:azure-active-directory" }
+      ad-models:     { kind: server, label: AD models, in: ad-ns, icon: "azure:azure-active-directory" }
+      ad-jupyter:    { kind: server, label: AD jupyter, in: ad-ns, icon: "azure:azure-active-directory" }
+      ad-anaconda:   { kind: server, label: AD anaconda, in: ad-ns, icon: "azure:azure-active-directory" }
+      ad-admin:      { kind: server, label: AD admin, in: ad-ns, icon: "azure:azure-active-directory" }
+
+  # ------------------------------------------------------------------ level 3: platform
+  - id: openshift
+    label: OpenShift
+    level: platform
+    color: "#fee2e2"
+    groups:
+      os-cluster: { label: OpenShift cluster, kind: cluster }
+      os-cp:      { label: Control plane, kind: group, in: os-cluster, cols: 3 }
+      os-cpu:     { label: CPU workers, kind: group, in: os-cluster, cols: 2 }
+      os-gpu:     { label: GPU workers, kind: group, in: os-cluster, cols: 2 }
+      os-ops:     { label: Operators and platform services, kind: group, in: os-cluster, cols: 3 }
+    nodes:
+      os-cp1: { kind: k8s-control-plane, label: Control plane 1, in: os-cp, on: cp1 }
+      os-cp2: { kind: k8s-control-plane, label: Control plane 2, in: os-cp, on: cp2 }
+      os-cp3: { kind: k8s-control-plane, label: Control plane 3, in: os-cp, on: cp3 }
+      os-api: { kind: k8s-api, label: OpenShift API, in: os-cp }
+      csi-driver: { kind: storageclass, label: CSI driver (controller), in: os-cp }
+      os-cpu1: { kind: k8s-node, label: CPU worker 1, in: os-cpu, on: cpu1 }
+      os-cpu2: { kind: k8s-node, label: CPU worker 2, in: os-cpu, on: cpu2 }
+      ns-default: { kind: k8s-namespace, label: default namespace (admin), in: os-cpu, note: "Administered from the CPU workers" }
+      ingress: { kind: ingress, label: Ingress, in: os-cpu, note: "Reached through the ingress VIP" }
+      os-gpu1: { kind: k8s-node, label: GPU worker 1, in: os-gpu, on: gpu1 }
+      os-gpu2: { kind: k8s-node, label: GPU worker 2, in: os-gpu, on: gpu2 }
+      csi-ds: { kind: daemonset, label: CSI plugin (node), in: os-gpu, note: "Runs on CPU and GPU workers" }
+      nvidia-op: { kind: deployment, label: NVIDIA GPU Operator, in: os-ops }
+      runai: { kind: deployment, label: Run:ai, in: os-ops, note: "GPU scheduling for the model workloads" }
+      gitlab-runner-op: { kind: deployment, label: GitLab Runner Operator, in: os-ops }
+      quay: { kind: object-store, label: Quay registry (local), in: os-ops, note: "Receives images pushed by the GitLab runners" }
+
+  # ------------------------------------------------------------------ level 4: secops
+  - id: security
+    label: Security
+    level: secops
+    color: "#fce7f3"
+    nodes:
+      perimeter-fw: { kind: firewall, label: Perimeter firewall }
+      secrets: { kind: secret, label: Secrets vault (OpenShift Secrets), note: "OpenShift Secrets for now" }
+      crowdstrike: { kind: ids, label: CrowdStrike Falcon, note: "Sensor on every node; links show a representative node per role" }
+
+  - id: observability
+    label: Observability and traceability
+    level: secops
+    color: "#e0f2fe"
+    nodes:
+      prometheus: { kind: microservice, label: Prometheus, color: "#e6522c" }
+      grafana: { kind: microservice, label: Grafana, color: "#f46800" }
+      arize: { kind: microservice, label: Arize, color: "#7c3aed", note: "LLM and agent tracing and evaluation" }
+
+  # ------------------------------------------------------------------ level 5: workloads (one namespace per plate)
+  - id: wl-multiagent
+    label: Multi-agent workload
+    level: workloads
+    color: "#ede9fe"
+    groups:
+      ns-multiagent: { label: ns multi-agent, kind: namespace, cols: 3 }
+    nodes:
+      orchestrator: { kind: microservice, label: Orchestrator, in: ns-multiagent, on: os-cpu1, color: "#4f46e5" }
+      hr-agent: { kind: microservice, label: HR agent, in: ns-multiagent, on: os-cpu1 }
+      net-agent: { kind: microservice, label: Networking agent, in: ns-multiagent, on: os-cpu1 }
+      citizen-agent: { kind: microservice, label: Citizen agent, in: ns-multiagent, on: os-cpu1 }
+      pg-metrics: { kind: database, label: PostgreSQL metrics, in: ns-multiagent, on: os-cpu2 }
+      hybrid-db: { kind: database, label: Hybrid DB (Apache AGE + pgvector), in: ns-multiagent, on: os-cpu2, color: "#0f766e" }
+
+  - id: wl-models
+    label: Models workload (Run:ai)
+    level: workloads
+    color: "#fef3c7"
+    groups:
+      ns-models: { label: ns models, kind: namespace, cols: 3 }
+    nodes:
+      mistral-nemo: { kind: llm, label: Mistral Nemo, in: ns-models, on: os-gpu1 }
+      laya: { kind: llm, label: Laya, in: ns-models, on: os-gpu2, color: "#be185d", note: "Classification model (like Jev)" }
+      phi: { kind: llm, label: Phi, in: ns-models, on: os-gpu2 }
+
+  - id: wl-jupyter
+    label: JupyterHub workload
+    level: workloads
+    color: "#dcfce7"
+    groups:
+      ns-jupyter: { label: ns jupyter, kind: namespace }
+    nodes:
+      jupyterhub: { kind: microservice, label: JupyterHub, in: ns-jupyter, on: os-cpu2, color: "#f59e0b" }
+
+  - id: wl-anaconda
+    label: Anaconda workload
+    level: workloads
+    color: "#e0f2fe"
+    groups:
+      ns-anaconda: { label: ns anaconda, kind: namespace }
+    nodes:
+      anaconda: { kind: object-store, label: Anaconda repository, in: ns-anaconda, on: os-cpu1 }
+
+  - id: wl-admin
+    label: Admin workload
+    level: workloads
+    color: "#fee2e2"
+    groups:
+      ns-admin: { label: ns admin, kind: namespace }
+    nodes:
+      admin-tools: { kind: microservice, label: Admin tools, in: ns-admin, on: os-cpu1, color: "#475569", note: "Reaches control plane, administration, security and observability" }
+
+  # ------------------------------------------------------------------ level 6: edge
+  - id: api
+    label: API
+    level: edge
+    color: "#fff7ed"
+    groups:
+      ext: { label: External (company-wide), kind: zone }
+    nodes:
+      fastapi: { kind: api, label: FastAPI, note: "Serves the multi-agent workload" }
+      gitlab: { kind: external, label: GitLab, in: ext, note: "Company-wide instance, outside the cluster. Entry point for the GitLab Runner Operator." }
+
+  - id: ux
+    label: User experience
+    level: edge
+    color: "#f1f5f9"
+    nodes:
+      chatbot: { kind: ui, label: Chatbot web widget }
+      data-scientists: { kind: user, label: Data scientists }
+      ai-devs: { kind: user, label: AI developers }
+      staff: { kind: user, label: Staff }
+
+links:
+  # --- network (placeholder topology)
+  - { from: internet, to: core-sw, label: uplink, class: external }
+  - { from: core-sw, to: mgmt-sw, class: management }
+  - { from: core-sw, to: data-sw, class: internal }
+  - { from: core-sw, to: storage-sw, class: storage }
+  - { from: data-sw, to: gpu-fabric, class: internal }
+  - { from: ingress-vip, to: data-sw, class: internal }
+  - { from: bastion, to: mgmt-sw, label: SSH, class: management }
+  - { from: cp1, to: data-sw, class: internal }
+  - { from: cp2, to: data-sw, class: internal }
+  - { from: cp3, to: data-sw, class: internal }
+  - { from: cpu1, to: data-sw, class: internal }
+  - { from: cpu2, to: data-sw, class: internal }
+  - { from: gpu1, to: gpu-fabric, class: internal }
+  - { from: gpu2, to: gpu-fabric, class: internal }
+  - { from: powerscale, to: storage-sw, label: NFS, class: storage }
+  - { from: perimeter-fw, to: internet, class: external }
+
+  # --- storage / CSI
+  - { from: csi-driver, to: az-multiagent, label: NFS, class: storage }
+  - { from: csi-driver, to: az-models, class: storage }
+  - { from: csi-ds, to: az-jupyter, class: storage }
+  - { from: csi-ds, to: az-anaconda, class: storage }
+  - { from: csi-ds, to: az-admin, class: storage }
+
+  # --- data layer
+  - { from: datalake, to: iceberg, class: data }
+  - { from: iceberg, to: orch, class: data }
+  - { from: orch, to: trino, class: data }
+  - { from: orch, to: search, label: index, class: data }
+
+  # --- identity
+  - { from: ad-multiagent, to: ad-tpc, label: federation, class: control }
+  - { from: ad-models, to: ad-tpc, class: control }
+  - { from: ad-jupyter, to: ad-tpc, class: control }
+  - { from: ad-anaconda, to: ad-tpc, class: control }
+  - { from: ad-admin, to: ad-tpc, class: control }
+  - { from: ad-tpc, to: keycloak, label: LDAP, class: control }
+  - { from: keycloak, to: os-api, label: OIDC, class: control }
+
+  # --- platform
+  - { from: ingress-vip, to: ingress, label: VIP, class: external }
+  - { from: ingress, to: fastapi, label: route, class: external }
+  - { from: nvidia-op, to: os-gpu1, class: control }
+  - { from: nvidia-op, to: os-gpu2, class: control }
+  - { from: runai, to: os-gpu1, label: schedule, class: control }
+  - { from: runai, to: os-gpu2, class: control }
+  - { from: gitlab-runner-op, to: quay, label: push images, class: data }
+  - { from: gitlab, to: gitlab-runner-op, label: CI jobs, class: external }
+  - { from: secrets, to: os-api, class: control }
+
+  # --- security / observability
+  - { from: crowdstrike, to: os-cp1, label: sensor, class: management }
+  - { from: crowdstrike, to: os-cpu1, class: management }
+  - { from: crowdstrike, to: os-gpu1, class: management }
+  - { from: prometheus, to: os-api, label: scrape, class: management }
+  - { from: prometheus, to: os-gpu1, label: DCGM, class: management }
+  - { from: grafana, to: prometheus, class: data }
+  - { from: orchestrator, to: arize, label: traces, class: data }
+  - { from: mistral-nemo, to: arize, class: data }
+
+  # --- workloads
+  - { from: fastapi, to: orchestrator, label: REST, class: internal }
+  - { from: orchestrator, to: hr-agent, class: internal }
+  - { from: orchestrator, to: net-agent, class: internal }
+  - { from: orchestrator, to: citizen-agent, class: internal }
+  - { from: orchestrator, to: pg-metrics, label: SQL, class: data }
+  - { from: orchestrator, to: hybrid-db, class: data }
+  - { from: hr-agent, to: hybrid-db, class: data }
+  - { from: net-agent, to: hybrid-db, class: data }
+  - { from: citizen-agent, to: hybrid-db, class: data }
+  - { from: orchestrator, to: mistral-nemo, label: inference, class: internal }
+  - { from: orchestrator, to: laya, class: internal }
+  - { from: orchestrator, to: phi, class: internal }
+  - { from: hr-agent, to: mistral-nemo, class: internal }
+  - { from: net-agent, to: mistral-nemo, class: internal }
+  - { from: citizen-agent, to: mistral-nemo, class: internal }
+  - { from: hr-agent, to: search, label: retrieval, class: data }
+  - { from: jupyterhub, to: trino, label: SQL, class: data }
+  - { from: jupyterhub, to: search, class: data }
+  - { from: jupyterhub, to: anaconda, label: conda, class: internal }
+  - { from: admin-tools, to: os-api, label: oc, class: management }
+  - { from: admin-tools, to: bastion, label: SSH, class: management }
+  - { from: admin-tools, to: crowdstrike, class: management }
+  - { from: admin-tools, to: grafana, class: management }
+
+  # --- user experience
+  - { from: chatbot, to: fastapi, label: HTTPS, class: external }
+  - { from: data-scientists, to: jupyterhub, label: HTTPS, class: external }
+  - { from: ai-devs, to: gitlab, label: git push, class: external }
+  - { from: staff, to: grafana, label: dashboards, class: external }

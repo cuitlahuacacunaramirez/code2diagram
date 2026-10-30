@@ -1,0 +1,17 @@
+iso: 1
+title: Minimal example
+layers:
+  - id: infra
+    label: Infrastructure
+    nodes:
+      srv:  { kind: server, label: App server }
+      disk: { kind: storage, label: Disk array }
+  - id: app
+    label: Application
+    nodes:
+      web: { kind: ui,       label: Web UI,   on: srv }
+      api: { kind: microservice, label: API,  on: srv }
+      db:  { kind: database, label: Database, on: disk }
+links:
+  - { from: web, to: api, label: HTTPS, class: internal }
+  - { from: api, to: db,  label: SQL,   class: data }

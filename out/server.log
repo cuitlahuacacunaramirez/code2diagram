@@ -1,0 +1,5 @@
+iso-diagram service on http://127.0.0.1:8765/  (dirs: \\sts4afcitrix\CTX-Data2\UsersData\RamirezC.STSAD\c_sandbox\c2d\examples)
+[serve] "GET /health HTTP/1.1" 200 -
+[serve] "GET / HTTP/1.1" 200 -
+[serve] "GET /favicon.ico HTTP/1.1" 404 -
+[serve] "GET /view/llm-platform.iso.yaml HTTP/1.1" 200 -
